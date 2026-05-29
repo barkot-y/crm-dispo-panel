@@ -13,6 +13,9 @@
 (function() {
     'use strict';
 
+  (function() {
+    'use strict';
+
     // 1. KNOWLEDGE BASE
     const REBUTTALS_DB = {
         thirdParty: {
@@ -102,7 +105,7 @@
         };
     }
 
-    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (AUTO-START LOGIC)
+    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (WITH AUTO-MUTE)
     function setupSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -118,6 +121,7 @@
         let isListening = false;
         const micBtn = document.getElementById('start-mic-btn');
         const captionBox = document.getElementById('live-caption-box');
+        const rebuttalBox = document.getElementById('ai-rebuttal-box');
         const autoStartMemory = sessionStorage.getItem('verma_mic_auto_start') === 'true';
 
         function activateMic() {
@@ -145,7 +149,7 @@
         });
 
         if (autoStartMemory) {
-            setTimeout(() => { activateMic(); }, 500);
+            setTimeout(() => { activateMic(); }, 500); 
         }
 
         recognition.onresult = (event) => {
@@ -159,6 +163,21 @@
             if (finalTranscript) {
                 captionBox.innerText = finalTranscript;
                 captionBox.scrollTop = captionBox.scrollHeight;
+                
+                const lowerText = finalTranscript.toLowerCase();
+
+                // === NEW: AUTO-MUTE LOGIC ===
+                if (lowerText.includes("for confirmation") || lowerText.includes("just to make sure")) {
+                    deactivateMic();
+                    rebuttalBox.innerHTML = "<strong>⏸️ Mic auto-muted for confirmation phase.</strong> <br><br> <em>(Click 'Start Mic OFF' to resume listening for the next call)</em>";
+                    rebuttalBox.style.background = "#fff3cd"; // Change background to warning yellow to visually alert the user
+                    rebuttalBox.style.color = "#856404";
+                    return; // Stop processing triggers for this snippet
+                }
+                
+                // If not auto-muted, run the standard matching engine
+                rebuttalBox.style.background = "#e8f4ff"; // Reset background color
+                rebuttalBox.style.color = "#004085"; // Reset text color
                 matchVoiceToRebuttal(finalTranscript);
             }
         };
@@ -172,18 +191,18 @@
         recognition.onerror = (event) => {
             if (event.error === 'not-allowed') {
                 captionBox.innerText = "Microphone access blocked! Edge requires a manual click to allow audio.";
-                deactivateMic();
+                deactivateMic(); 
             }
         };
     }
 
-    // 5. ADVANCED DYNAMIC MATCHING ENGINE (MASSIVELY EXPANDED)
+    // 5. ADVANCED DYNAMIC MATCHING ENGINE
     function matchVoiceToRebuttal(text) {
         const lowerText = text.toLowerCase();
         const rebuttalBox = document.getElementById('ai-rebuttal-box');
         if (!rebuttalBox) return;
 
-        // The master map of all combinations, synonyms, and natural slang
+        // Master trigger map
         const triggerMap = [
             // THIRD PARTY & UNCONFIRMED
             { keywords: ["what is this about", "what's this about", "why are you calling", "what do you want", "what is this regarding", "who is this", "not available", "not here right now", "she's at work", "he's at work", "out of town", "on vacation", "call back later", "who am i speaking with", "what company is calling", "not home", "take a message", "unavailable", "step away", "who are you looking for"], rebuttal: REBUTTALS_DB.thirdParty.whatIsThis },
@@ -222,7 +241,7 @@
         ];
 
         // Search the map for any matching keyword
-        const match = triggerMap.find(mapping =>
+        const match = triggerMap.find(mapping => 
             mapping.keywords.some(keyword => lowerText.includes(keyword))
         );
 
