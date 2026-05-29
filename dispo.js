@@ -9,10 +9,14 @@
 // @run-at       document-end
 // ==/UserScript==
 
+
 (function() {
     'use strict';
 
-    // 1. KNOWLEDGE BASE (Updated for 2026)
+  (function() {
+    'use strict';
+
+    // 1. KNOWLEDGE BASE
     const REBUTTALS_DB = {
         thirdParty: {
             whatIsThis: "My name is (Agent Name). I'm calling on behalf of (SH Last Name) investment with (Job Name) regarding an upcoming meeting. Is he/she available? May I please leave a message?",
@@ -27,7 +31,8 @@
             numberBlocked: "Our dialing system currently does not allow an outbound phone number to be displayed. I would be happy to give you our toll-free number for you to call us back.",
             neverCalled: "I understand your concern, we know many shareholders may not have the time to review the proxy materials or vote by mail. We're calling to offer you the convenience of voting by phone.",
             whoDoYouWorkFor: "I am with Alliance Advisors, a proxy information firm, retained by <JOB NAME> to contact shareholders about the upcoming meeting.",
-            dontOwnShares: "Our records indicate that you are currently a shareholder of <JOB NAME>, and you reside in [CITY/STATE/ZIP]. Is this correct? ... I apologize for the inconvenience. Your participation is important."
+            dontOwnShares: "Our records indicate that you are currently a shareholder of <JOB NAME>, and you reside in [CITY/STATE/ZIP]. Is this correct? ... I apologize for the inconvenience. Your participation is important.",
+            keepCalling: "I apologize for the inconvenience. Your participation is important, your vote has not been recorded yet, so we are reaching out to offer the option of voting by phone."
         },
         voting: {
             whyVote: "We want to ensure that all shares are represented at the upcoming meeting. If the meeting is adjourned, it will have to be rescheduled and the materials re-mailed. Your board has recommended you vote 'FOR'...",
@@ -100,7 +105,7 @@
         };
     }
 
-    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (AUTO-START LOGIC)
+    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (WITH AUTO-MUTE)
     function setupSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -116,6 +121,7 @@
         let isListening = false;
         const micBtn = document.getElementById('start-mic-btn');
         const captionBox = document.getElementById('live-caption-box');
+        const rebuttalBox = document.getElementById('ai-rebuttal-box');
         const autoStartMemory = sessionStorage.getItem('verma_mic_auto_start') === 'true';
 
         function activateMic() {
@@ -143,7 +149,7 @@
         });
 
         if (autoStartMemory) {
-            setTimeout(() => { activateMic(); }, 500);
+            setTimeout(() => { activateMic(); }, 500); 
         }
 
         recognition.onresult = (event) => {
@@ -157,6 +163,21 @@
             if (finalTranscript) {
                 captionBox.innerText = finalTranscript;
                 captionBox.scrollTop = captionBox.scrollHeight;
+                
+                const lowerText = finalTranscript.toLowerCase();
+
+                // === NEW: AUTO-MUTE LOGIC ===
+                if (lowerText.includes("for confirmation") || lowerText.includes("just to make sure")) {
+                    deactivateMic();
+                    rebuttalBox.innerHTML = "<strong>⏸️ Mic auto-muted for confirmation phase.</strong> <br><br> <em>(Click 'Start Mic OFF' to resume listening for the next call)</em>";
+                    rebuttalBox.style.background = "#fff3cd"; // Change background to warning yellow to visually alert the user
+                    rebuttalBox.style.color = "#856404";
+                    return; // Stop processing triggers for this snippet
+                }
+                
+                // If not auto-muted, run the standard matching engine
+                rebuttalBox.style.background = "#e8f4ff"; // Reset background color
+                rebuttalBox.style.color = "#004085"; // Reset text color
                 matchVoiceToRebuttal(finalTranscript);
             }
         };
@@ -170,7 +191,7 @@
         recognition.onerror = (event) => {
             if (event.error === 'not-allowed') {
                 captionBox.innerText = "Microphone access blocked! Edge requires a manual click to allow audio.";
-                deactivateMic();
+                deactivateMic(); 
             }
         };
     }
@@ -181,55 +202,54 @@
         const rebuttalBox = document.getElementById('ai-rebuttal-box');
         if (!rebuttalBox) return;
 
-        // The master map of all combinations and synonyms
+        // Master trigger map
         const triggerMap = [
             // THIRD PARTY & UNCONFIRMED
-            { keywords: ["what is this about", "why are you calling", "what is this regarding", "who is this", "not available", "not here right now", "not home", "take a message", "unavailable", "step away", "who are you looking for"], rebuttal: REBUTTALS_DB.thirdParty.whatIsThis },
-            { keywords: ["handle financial", "handle finances", "handle her money", "handle his money", "how many shares", "account specifics", "husband", "wife", "spouse", "can i vote for", "vote on their behalf", "power of attorney"], rebuttal: REBUTTALS_DB.thirdParty.financialMatters },
-            { keywords: ["wrong number", "no one by that name", "nobody by that name", "wrong person", "wrong dial"], rebuttal: REBUTTALS_DB.thirdParty.wrongNumber },
-            { keywords: ["deceased", "passed away", "died", "is dead", "passed on", "no longer with us"], rebuttal: REBUTTALS_DB.thirdParty.deceased },
-            { keywords: ["incapacitated", "military", "nursing home", "hospital", "does not live here", "moved away", "different address", "doesn't live here"], rebuttal: REBUTTALS_DB.thirdParty.incapacitated },
+            { keywords: ["what is this about", "what's this about", "why are you calling", "what do you want", "what is this regarding", "who is this", "not available", "not here right now", "she's at work", "he's at work", "out of town", "on vacation", "call back later", "who am i speaking with", "what company is calling", "not home", "take a message", "unavailable", "step away", "who are you looking for"], rebuttal: REBUTTALS_DB.thirdParty.whatIsThis },
+            { keywords: ["handle financial", "handle finances", "handle her money", "handle his money", "i manage the accounts", "i do the investing", "i take care of the finances", "i'm his son", "i'm her daughter", "joint account", "we share the account", "how many shares", "account specifics", "husband", "wife", "spouse", "can i vote for", "vote on their behalf", "power of attorney"], rebuttal: REBUTTALS_DB.thirdParty.financialMatters },
+            { keywords: ["wrong number", "you have the wrong number", "no one by that name", "nobody by that name", "never heard of him", "never heard of her", "there's no one here by that name", "wrong person", "wrong dial", "you got the wrong house", "who are you trying to reach", "no such person"], rebuttal: REBUTTALS_DB.thirdParty.wrongNumber },
+            { keywords: ["deceased", "passed away", "she passed", "he passed", "died", "is dead", "passed on", "no longer living", "passed last year", "recently passed", "he's gone", "no longer with us"], rebuttal: REBUTTALS_DB.thirdParty.deceased },
+            { keywords: ["incapacitated", "dementia", "alzheimer's", "hospice", "assisted living", "nursing home", "hospital", "military", "deployed", "overseas", "does not live here", "she moved", "he moved", "moved away", "different address", "got a new number", "doesn't live here"], rebuttal: REBUTTALS_DB.thirdParty.incapacitated },
 
             // SKEPTICAL
-            { keywords: ["sales call", "telemarketer", "soliciting", "trying to sell", "selling something"], rebuttal: REBUTTALS_DB.skeptical.isSalesCall },
-            { keywords: ["why is this recorded", "why are you recording", "get my phone number", "get my number", "where did you get", "who gave you my number"], rebuttal: REBUTTALS_DB.skeptical.whyRecorded },
-            { keywords: ["number blocked", "spam risk", "caller id", "unknown number", "private number", "why is your number"], rebuttal: REBUTTALS_DB.skeptical.numberBlocked },
-            { keywords: ["never been called", "never called me before", "first time", "never received a call", "never got a call"], rebuttal: REBUTTALS_DB.skeptical.neverCalled },
-            { keywords: ["who do you work for", "what company is this", "where are you calling from", "who are you with"], rebuttal: REBUTTALS_DB.skeptical.whoDoYouWorkFor },
-            { keywords: ["don't own shares", "don't have an investment", "not a shareholder", "keep calling me", "why do you keep calling", "stop calling"], rebuttal: REBUTTALS_DB.skeptical.dontOwnShares },
+            { keywords: ["sales call", "are you selling", "what are you selling", "telemarketer", "soliciting", "trying to sell", "selling something", "i'm not buying anything", "not interested in buying", "is this a scam", "cold call"], rebuttal: REBUTTALS_DB.skeptical.isSalesCall },
+            { keywords: ["why is this recorded", "are you recording me", "am i being recorded", "is this on tape", "why are you recording", "get my phone number", "how do you have my number", "where'd you get this number", "get my number", "where did you get", "who gave you my number", "did my broker give you this"], rebuttal: REBUTTALS_DB.skeptical.whyRecorded },
+            { keywords: ["number blocked", "spam risk", "showed up as spam", "why does it say scam likely", "caller id", "unknown number", "private number", "no caller id", "hidden number", "why is your number"], rebuttal: REBUTTALS_DB.skeptical.numberBlocked },
+            { keywords: ["never been called", "never called me before", "first time", "never received a call", "i usually get this in the mail", "why are you calling me now", "nobody ever calls me for this", "i always do this by mail", "never got a call"], rebuttal: REBUTTALS_DB.skeptical.neverCalled },
+            { keywords: ["who do you work for", "what company is this", "where are you calling from", "who is your employer", "who hired you", "are you with the company", "are you calling from the board", "who are you with"], rebuttal: REBUTTALS_DB.skeptical.whoDoYouWorkFor },
+            { keywords: ["don't own shares", "don't have an investment", "i don't own any", "never heard of that company", "i don't have stock in that", "not a shareholder", "you're mistaken"], rebuttal: REBUTTALS_DB.skeptical.dontOwnShares },
+            { keywords: ["keep calling me", "why do you keep calling", "stop calling", "you guys call every day", "you called me yesterday", "stop harassing me", "take me off your list", "do not call list"], rebuttal: REBUTTALS_DB.skeptical.keepCalling },
 
             // VOTING
-            { keywords: ["why do i need to vote", "why should i vote", "do i have to vote", "what happens if i don't", "why does it matter"], rebuttal: REBUTTALS_DB.voting.whyVote },
-            { keywords: ["already voted", "sent in", "mailed it", "already sent my proxy", "done this already", "already sent"], rebuttal: REBUTTALS_DB.voting.alreadyVoted },
-            { keywords: ["vote online", "internet", "use the web", "online voting", "do it online"], rebuttal: REBUTTALS_DB.voting.voteOnline },
-            { keywords: ["abstain", "will not vote", "not interested", "refuse to vote", "don't want to vote", "not voting", "don't care"], rebuttal: REBUTTALS_DB.voting.abstain },
-            { keywords: ["sold my shares", "already sold", "don't own them anymore", "cashed out"], rebuttal: REBUTTALS_DB.voting.soldShares },
+            { keywords: ["why do i need to vote", "why should i vote", "do i have to vote", "what happens if i don't", "what's the point", "does my vote count", "i don't have enough shares to matter", "my shares don't mean anything", "i only have a few shares", "why does it matter"], rebuttal: REBUTTALS_DB.voting.whyVote },
+            { keywords: ["already voted", "sent in", "mailed it", "did it online", "already took care of it", "threw it in the mail", "did that yesterday", "i voted last week", "already sent my proxy", "done this already", "already sent"], rebuttal: REBUTTALS_DB.voting.alreadyVoted },
+            { keywords: ["vote online", "internet", "use the web", "i have the website", "do it on my computer", "proxyvote.com", "i'll scan the qr code", "online voting", "do it online"], rebuttal: REBUTTALS_DB.voting.voteOnline },
+            { keywords: ["abstain", "will not vote", "not interested", "refuse to vote", "don't want to vote", "not voting", "throw them in the trash", "shredded it", "i toss them", "leave it to the board", "waste of time", "don't care"], rebuttal: REBUTTALS_DB.voting.abstain },
+            { keywords: ["sold my shares", "already sold", "sold out", "closed that account", "liquidated", "got rid of them", "don't own them anymore", "cashed out"], rebuttal: REBUTTALS_DB.voting.soldShares },
 
             // CONFIRMING
-            { keywords: ["how many accounts", "how many do i have", "multiple accounts"], rebuttal: REBUTTALS_DB.confirming.howManyAccounts },
-            { keywords: ["all accounts accordingly", "what does accordingly mean", "what does that mean"], rebuttal: REBUTTALS_DB.confirming.allAccounts },
-            { keywords: ["written confirmation", "don't need you to send", "don't mail me", "save the paper"], rebuttal: REBUTTALS_DB.confirming.noWrittenConfirmation },
-            { keywords: ["update the address", "update address", "wrong address", "change my name", "new address", "moved to", "update my info"], rebuttal: REBUTTALS_DB.confirming.updateAddress },
+            { keywords: ["how many accounts", "how many do i have", "do i have more than one", "what accounts", "are my wife's combined", "multiple accounts"], rebuttal: REBUTTALS_DB.confirming.howManyAccounts },
+            { keywords: ["all accounts accordingly", "what does accordingly mean", "what does that mean", "same way for all", "vote them all the same", "what does all accounts mean"], rebuttal: REBUTTALS_DB.confirming.allAccounts },
+            { keywords: ["written confirmation", "don't need you to send", "don't mail me", "don't send me anything", "stop sending me mail", "too much paper", "can you email it instead", "save the paper"], rebuttal: REBUTTALS_DB.confirming.noWrittenConfirmation },
+            { keywords: ["update the address", "update address", "wrong address", "you have the wrong address", "i need to change my address", "zip code is wrong", "change my name", "new address", "moved to", "update my info"], rebuttal: REBUTTALS_DB.confirming.updateAddress },
 
             // UNDECIDED & CALLBACKS
-            { keywords: ["suggest i vote", "how should i vote", "what do you recommend", "board recommendation", "board suggest"], rebuttal: REBUTTALS_DB.undecided.howToVote },
-            { keywords: ["haven't decided", "don't know yet", "still thinking", "need more time", "need to look at it"], rebuttal: REBUTTALS_DB.undecided.haventDecided },
-            { keywords: ["call me back", "call back later", "not received", "didn't get the material", "remail", "send it again", "mail it to me"], rebuttal: REBUTTALS_DB.undecided.callMeBack },
-            { keywords: ["broker", "financial advisor", "financial planner", "wealth manager", "guy handles it", "let my broker"], rebuttal: REBUTTALS_DB.undecided.brokerHandles }
+            { keywords: ["suggest i vote", "how should i vote", "what do you recommend", "what is the board asking for", "how is management voting", "what's the best way to vote", "tell me what to do", "board recommendation", "board suggest"], rebuttal: REBUTTALS_DB.undecided.howToVote },
+            { keywords: ["haven't decided", "don't know yet", "still thinking", "need more time", "haven't read it", "haven't opened the mail yet", "sitting on my desk", "need to review the materials", "need to look at it"], rebuttal: REBUTTALS_DB.undecided.haventDecided },
+            { keywords: ["call me back", "call back later", "try me tomorrow", "i'm busy right now", "driving right now", "call me this evening", "not received", "didn't get the material", "can you resend it", "never got it in the mail", "remail", "send it again", "mail it to me"], rebuttal: REBUTTALS_DB.undecided.callMeBack },
+            { keywords: ["broker", "financial advisor", "financial planner", "wealth manager", "my guy at morgan stanley", "fidelity handles that", "charles schwab", "my accountant", "i don't make those decisions", "my husband's broker", "guy handles it", "let my broker"], rebuttal: REBUTTALS_DB.undecided.brokerHandles }
         ];
 
         // Search the map for any matching keyword
-        const match = triggerMap.find(mapping =>
+        const match = triggerMap.find(mapping => 
             mapping.keywords.some(keyword => lowerText.includes(keyword))
         );
 
         if (match) {
             rebuttalBox.innerText = match.rebuttal;
-        } else if (text.trim() !== "") {
-            // Keep the previous suggestion if they keep talking but don't trigger a new one immediately
-            // Or show listening state if empty
         }
     }
 
     createDispoPanel();
 })();
+
