@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         CRM Live Caption & Dispo Assist
+// @name         CRM Live Caption & Dispo Assist (Verma - PII Secure v3.4)
 // @namespace    http://tampermonkey.net/
 // @version      1.2
 // @description  Globally injected CRM panel with real-time captions, draggable capabilities, and matching rules
@@ -9,11 +9,7 @@
 // @run-at       document-end
 // ==/UserScript==
 
-
 (function() {
-    'use strict';
-
-  (function() {
     'use strict';
 
     // 1. KNOWLEDGE BASE
@@ -105,7 +101,7 @@
         };
     }
 
-    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (WITH AUTO-MUTE)
+    // 4. BUILT-IN BROWSER SPEECH RECOGNITION (WITH PII AUTO-MUTE)
     function setupSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -123,6 +119,28 @@
         const captionBox = document.getElementById('live-caption-box');
         const rebuttalBox = document.getElementById('ai-rebuttal-box');
         const autoStartMemory = sessionStorage.getItem('verma_mic_auto_start') === 'true';
+
+        // PII Security Triggers (Array of phrases that will immediately shut off the mic)
+        const piiTriggers = [
+            "for confirmation",
+            "just to make sure",
+            "to locate your account",
+            "pull up your account",
+            "can i have your last name",
+            "what is your last name",
+            "first name",
+            "zip code",
+            "postal code",
+            "verify your identity",
+            "date of birth",
+            "account number",
+            "control number",
+            "social security",
+            "last four of your social",
+            "phone number",
+            "email address",
+            "verify your address"
+        ];
 
         function activateMic() {
             try {
@@ -166,11 +184,12 @@
                 
                 const lowerText = finalTranscript.toLowerCase();
 
-                // === NEW: AUTO-MUTE LOGIC ===
-                if (lowerText.includes("for confirmation") || lowerText.includes("just to make sure")) {
+                // === PII SECURE AUTO-MUTE LOGIC ===
+                // Check if any of the sensitive triggers are spoken by the agent
+                if (piiTriggers.some(trigger => lowerText.includes(trigger))) {
                     deactivateMic();
-                    rebuttalBox.innerHTML = "<strong>⏸️ Mic auto-muted for confirmation phase.</strong> <br><br> <em>(Click 'Start Mic OFF' to resume listening for the next call)</em>";
-                    rebuttalBox.style.background = "#fff3cd"; // Change background to warning yellow to visually alert the user
+                    rebuttalBox.innerHTML = "<strong>🔒 Mic auto-muted to protect PII.</strong> <br><br> <em>Sensitive information requested. Click 'Start Mic OFF' to resume after the data is securely collected.</em>";
+                    rebuttalBox.style.background = "#fff3cd"; // Warning yellow background
                     rebuttalBox.style.color = "#856404";
                     return; // Stop processing triggers for this snippet
                 }
@@ -252,4 +271,3 @@
 
     createDispoPanel();
 })();
-
